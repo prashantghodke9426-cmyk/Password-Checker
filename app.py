@@ -1,167 +1,233 @@
 import streamlit as st
-import pandas as pd
 import re
-import os
-import pickle
+import math
 import random
 import string
-from sklearn.linear_model import LogisticRegression
+import matplotlib.pyplot as plt
+import pandas as pd
+import sqlite3
+import bcrypt
+from datetime import datetime
 
-# -----------------------------
-# Feature Extraction
-# -----------------------------
-def extract_features(password):
-    length = len(password)
-    has_upper = 1 if re.search(r'[A-Z]', password) else 0
-    has_lower = 1 if re.search(r'[a-z]', password) else 0
-    has_digit = 1 if re.search(r'[0-9]', password) else 0
-    has_special = 1 if re.search(r'[@$!%*?&]', password) else 0
-    return [length, has_upper, has_lower, has_digit, has_special]
+# ---------------------------------------------------
+# DATABASE SETUP
+# ---------------------------------------------------
+conn = sqlite3.connect("security_app.db", check_same_thread=False)
+c = conn.cursor()
 
-# -----------------------------
-# Suggestions
-# -----------------------------
+c.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    subscription TEXT DEFAULT 'Free'
+)
+""")
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS password_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    password TEXT,
+    score INTEGER,
+    entropy REAL,
+    date TEXT
+)
+""")
+conn.commit()
+
+# ---------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------
+st.set_page_config(page_title="AI Security SaaS", page_icon="🔐", layout="centered")
+
+# ---------------------------------------------------
+# SESSION STATE
+# ---------------------------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
+if "subscription" not in st.session_state:
+    st.session_state.subscription = "Free"
+
+# ---------------------------------------------------
+# PASSWORD FUNCTIONS (UNCHANGED)
+# ---------------------------------------------------
+def calculate_entropy(password):
+    pool = 0
+    if re.search(r'[a-z]', password):
+        pool += 26
+    if re.search(r'[A-Z]', password):
+        pool += 26
+    if re.search(r'[0-9]', password):
+        pool += 10
+    if re.search(r'[@$!%*?&]', password):
+        pool += 7
+    if pool == 0:
+        return 0
+    return round(len(password) * math.log2(pool), 2)
+
+def password_score(password):
+    score = 0
+    if len(password) >= 8:
+        score += 20
+    if len(password) >= 12:
+        score += 10
+    if re.search(r'[A-Z]', password):
+        score += 20
+    if re.search(r'[a-z]', password):
+        score += 20
+    if re.search(r'[0-9]', password):
+        score += 15
+    if re.search(r'[@$!%*?&]', password):
+        score += 15
+    return min(score, 100)
+
+def generate_password(length=12):
+    upper = random.choice(string.ascii_uppercase)
+    lower = random.choice(string.ascii_lowercase)
+    digit = random.choice(string.digits)
+    special = random.choice("@$!%*?&")
+    remaining = ''.join(random.choice(
+        string.ascii_letters + string.digits + "@$!%*?&"
+    ) for _ in range(length - 4))
+    password = list(upper + lower + digit + special + remaining)
+    random.shuffle(password)
+    return ''.join(password)
+
 def generate_suggestions(password):
     suggestions = []
-
     if len(password) < 8:
-        suggestions.append("Add at least 8 characters")
+        suggestions.append("Increase password length (minimum 8)")
     if not re.search(r'[A-Z]', password):
-        suggestions.append("Add at least one uppercase letter")
+        suggestions.append("Add uppercase letter")
     if not re.search(r'[a-z]', password):
-        suggestions.append("Add at least one lowercase letter")
+        suggestions.append("Add lowercase letter")
     if not re.search(r'[0-9]', password):
-        suggestions.append("Add at least one number")
+        suggestions.append("Add number")
     if not re.search(r'[@$!%*?&]', password):
-        suggestions.append("Add at least one special character (@$!%*?&)")
-
+        suggestions.append("Add special character")
     return suggestions
 
-# -----------------------------
-# Password Generator
-# -----------------------------
-def generate_password(length=12):
-    characters = string.ascii_letters + string.digits + "@$!%*?&"
-    password = ''.join(random.choice(characters) for _ in range(length))
-    return password
+# ---------------------------------------------------
+# AUTH SYSTEM
+# ---------------------------------------------------
+def register(username, password):
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    try:
+        c.execute("INSERT INTO users (username, password) VALUES (?,?)",
+                  (username, hashed))
+        conn.commit()
+        return True
+    except:
+        return False
 
-# -----------------------------
-# Train Model Automatically
-# -----------------------------
-def train_model():
-    data = {
-        "password": [
-            "12345", "password", "hello", "abc123",
-            "Pass123", "Hello123", "Pass@123",
-            "Strong@2024", "Ultra@Secure99", "Admin@123"
-        ],
-        "strength": [0, 0, 0, 1, 1, 1, 2, 2, 2, 2]
-    }
+def login(username, password):
+    c.execute("SELECT * FROM users WHERE username=?", (username,))
+    user = c.fetchone()
+    if user and bcrypt.checkpw(password.encode(), user[2]):
+        return user
+    return None
 
-    df = pd.DataFrame(data)
+# ---------------------------------------------------
+# LOGIN / REGISTER UI
+# ---------------------------------------------------
+if not st.session_state.logged_in:
 
-    X = df["password"].apply(extract_features).tolist()
-    y = df["strength"]
+    st.title("🔐 AI Security SaaS")
 
-    model = LogisticRegression()
-    model.fit(X, y)
+    menu = st.radio("Select Option", ["Login", "Register"])
 
-    with open("model.pkl", "wb") as f:
-        pickle.dump(model, f)
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
-    return model
+    if menu == "Register":
+        if st.button("Create Account"):
+            if register(username, password):
+                st.success("Account created successfully!")
+            else:
+                st.error("Username already exists.")
 
-# -----------------------------
-# Load or Train Model
-# -----------------------------
-if not os.path.exists("model.pkl"):
-    model = train_model()
+    if menu == "Login":
+        if st.button("Login"):
+            user = login(username, password)
+            if user:
+                st.session_state.logged_in = True
+                st.session_state.user_id = user[0]
+                st.session_state.subscription = user[3]
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
+
+# ---------------------------------------------------
+# MAIN APP (AFTER LOGIN)
+# ---------------------------------------------------
 else:
-    with open("model.pkl", "rb") as f:
-        model = pickle.load(f)
 
-# -----------------------------
-# UI Setup
-# -----------------------------
-st.set_page_config(page_title="AI Password Checker", page_icon="🔐")
+    st.title("🔐 AI Security Dashboard")
+    st.write(f"Subscription Plan: **{st.session_state.subscription}**")
 
-st.markdown("""
-<style>
-.big-font {
-    font-size:25px !important;
-    font-weight: bold;
-}
-</style>
-""", unsafe_allow_html=True)
+    if st.button("Upgrade to Pro (Demo)"):
+        c.execute("UPDATE users SET subscription='Pro' WHERE id=?",
+                  (st.session_state.user_id,))
+        conn.commit()
+        st.session_state.subscription = "Pro"
+        st.success("Upgraded to Pro!")
 
-st.title("🔐 AI Password Strength Checker")
-st.write("AI Powered | Animated Strength Meter | Smart Suggestions")
+    if st.button("Logout"):
+        st.session_state.logged_in = False
+        st.rerun()
 
-# -----------------------------
-# Password Input
-# -----------------------------
-password = st.text_input("Enter your password", type="password")
+    st.divider()
 
-# -----------------------------
-# Generate Password Button
-# -----------------------------
-if st.button("Generate Strong Password"):
-    new_password = generate_password()
-    st.success(f"Generated Password: `{new_password}`")
+    password = st.text_input("Enter Password to Analyze", type="password")
 
-# -----------------------------
-# Check Strength
-# -----------------------------
-if st.button("Check Strength"):
     if password:
+        entropy = calculate_entropy(password)
+        score = password_score(password)
 
-        features = [extract_features(password)]
-        prediction = model.predict(features)[0]
-        probability = model.predict_proba(features)[0]
-        strength_score = round(max(probability) * 100)
+        st.write(f"Score: {score}%")
+        st.write(f"Entropy: {entropy} bits")
 
-        # 🎨 Animated Color Bar
-        if strength_score < 40:
-            color = "red"
-            label = "Weak"
-        elif strength_score < 75:
-            color = "orange"
-            label = "Medium"
-        else:
-            color = "green"
-            label = "Strong"
+        # Save to history
+        c.execute("""
+        INSERT INTO password_history (user_id, password, score, entropy, date)
+        VALUES (?,?,?,?,?)
+        """, (st.session_state.user_id,
+              password, score, entropy,
+              datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
 
-        st.markdown(f"""
-        <div style="background-color:#ddd; border-radius:10px;">
-            <div style="
-                width:{strength_score}%;
-                background-color:{color};
-                padding:10px;
-                border-radius:10px;
-                text-align:center;
-                color:white;
-                font-weight:bold;">
-                {strength_score}% - {label}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Status Message
-        if prediction == 0:
-            st.error("Weak Password ❌")
-        elif prediction == 1:
-            st.warning("Medium Password ⚠️")
-        else:
-            st.success("Strong Password ✅")
-
-        # Suggestions
         suggestions = generate_suggestions(password)
         if suggestions:
-            st.subheader("Suggestions to Improve:")
-            for suggestion in suggestions:
-                st.write(f"🔹 {suggestion}")
+            st.write("Suggestions:")
+            for s in suggestions:
+                st.write("-", s)
         else:
-            st.success("Excellent! Your password follows best practices 🎉")
+            st.success("Strong Password")
 
+    # ---------------------------------------------------
+    # PASSWORD HISTORY DASHBOARD
+    # ---------------------------------------------------
+    st.subheader("Password History")
+
+    c.execute("""
+    SELECT password, score, entropy, date
+    FROM password_history
+    WHERE user_id=?
+    ORDER BY id DESC
+    """, (st.session_state.user_id,))
+    data = c.fetchall()
+
+    if data:
+        df = pd.DataFrame(data, columns=["Password", "Score", "Entropy", "Date"])
+        st.dataframe(df)
+
+        fig = plt.figure()
+        plt.plot(df["Score"])
+        plt.title("Score Trend")
+        st.pyplot(fig)
     else:
-        st.warning("Please enter a password.")
+        st.info("No history yet.")
