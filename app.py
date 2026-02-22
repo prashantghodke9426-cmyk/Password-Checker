@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import sqlite3
 import bcrypt
+import hashlib
+import uuid
 from datetime import datetime
 
 # ---------------------------------------------------
@@ -20,7 +22,9 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
     password TEXT,
-    subscription TEXT DEFAULT 'Free'
+    subscription TEXT DEFAULT 'Free',
+    role TEXT DEFAULT 'User',
+    api_key TEXT
 )
 """)
 
@@ -28,12 +32,13 @@ c.execute("""
 CREATE TABLE IF NOT EXISTS password_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
-    password TEXT,
+    password_hash TEXT,
     score INTEGER,
     entropy REAL,
     date TEXT
 )
 """)
+
 conn.commit()
 
 # ---------------------------------------------------
@@ -50,9 +55,11 @@ if "user_id" not in st.session_state:
     st.session_state.user_id = None
 if "subscription" not in st.session_state:
     st.session_state.subscription = "Free"
+if "failed_attempts" not in st.session_state:
+    st.session_state.failed_attempts = 0
 
 # ---------------------------------------------------
-# PASSWORD FUNCTIONS (UNCHANGED)
+# PASSWORD FUNCTIONS
 # ---------------------------------------------------
 def calculate_entropy(password):
     pool = 0
@@ -85,16 +92,8 @@ def password_score(password):
     return min(score, 100)
 
 def generate_password(length=12):
-    upper = random.choice(string.ascii_uppercase)
-    lower = random.choice(string.ascii_lowercase)
-    digit = random.choice(string.digits)
-    special = random.choice("@$!%*?&")
-    remaining = ''.join(random.choice(
-        string.ascii_letters + string.digits + "@$!%*?&"
-    ) for _ in range(length - 4))
-    password = list(upper + lower + digit + special + remaining)
-    random.shuffle(password)
-    return ''.join(password)
+    chars = string.ascii_letters + string.digits + "@$!%*?&"
+    return ''.join(random.choice(chars) for _ in range(length))
 
 def generate_suggestions(password):
     suggestions = []
@@ -110,14 +109,25 @@ def generate_suggestions(password):
         suggestions.append("Add special character")
     return suggestions
 
+def mask_password(password):
+    if len(password) <= 4:
+        return "*" * len(password)
+    return password[:2] + "*"*(len(password)-4) + password[-2:]
+
+def hash_password_history(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
 # ---------------------------------------------------
 # AUTH SYSTEM
 # ---------------------------------------------------
 def register(username, password):
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    api_key = str(uuid.uuid4())
+    role = "Admin" if get_user_count() == 0 else "User"
+
     try:
-        c.execute("INSERT INTO users (username, password) VALUES (?,?)",
-                  (username, hashed))
+        c.execute("INSERT INTO users (username, password, role, api_key) VALUES (?,?,?,?)",
+                  (username, hashed, role, api_key))
         conn.commit()
         return True
     except:
@@ -130,15 +140,18 @@ def login(username, password):
         return user
     return None
 
+def get_user_count():
+    c.execute("SELECT COUNT(*) FROM users")
+    return c.fetchone()[0]
+
 # ---------------------------------------------------
-# LOGIN / REGISTER UI
+# LOGIN / REGISTER
 # ---------------------------------------------------
 if not st.session_state.logged_in:
 
     st.title("🔐 AI Security SaaS")
 
     menu = st.radio("Select Option", ["Login", "Register"])
-
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
@@ -151,23 +164,32 @@ if not st.session_state.logged_in:
 
     if menu == "Login":
         if st.button("Login"):
-            user = login(username, password)
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.user_id = user[0]
-                st.session_state.subscription = user[3]
-                st.success("Login successful!")
-                st.rerun()
+
+            if st.session_state.failed_attempts >= 5:
+                st.error("Too many failed attempts. Try later.")
             else:
-                st.error("Invalid credentials")
+                user = login(username, password)
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = user[0]
+                    st.session_state.subscription = user[3]
+                    st.session_state.role = user[4]
+                    st.session_state.api_key = user[5]
+                    st.session_state.failed_attempts = 0
+                    st.success("Login successful!")
+                    st.rerun()
+                else:
+                    st.session_state.failed_attempts += 1
+                    st.error("Invalid credentials")
 
 # ---------------------------------------------------
-# MAIN APP (AFTER LOGIN)
+# MAIN DASHBOARD
 # ---------------------------------------------------
 else:
 
     st.title("🔐 AI Security Dashboard")
     st.write(f"Subscription Plan: **{st.session_state.subscription}**")
+    st.write(f"API Key: `{st.session_state.api_key}`")
 
     if st.button("Upgrade to Pro (Demo)"):
         c.execute("UPDATE users SET subscription='Pro' WHERE id=?",
@@ -191,12 +213,13 @@ else:
         st.write(f"Score: {score}%")
         st.write(f"Entropy: {entropy} bits")
 
-        # Save to history
+        password_hash = hash_password_history(password)
+
         c.execute("""
-        INSERT INTO password_history (user_id, password, score, entropy, date)
+        INSERT INTO password_history (user_id, password_hash, score, entropy, date)
         VALUES (?,?,?,?,?)
         """, (st.session_state.user_id,
-              password, score, entropy,
+              password_hash, score, entropy,
               datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
 
@@ -209,12 +232,12 @@ else:
             st.success("Strong Password")
 
     # ---------------------------------------------------
-    # PASSWORD HISTORY DASHBOARD
+    # PASSWORD HISTORY
     # ---------------------------------------------------
     st.subheader("Password History")
 
     c.execute("""
-    SELECT password, score, entropy, date
+    SELECT password_hash, score, entropy, date
     FROM password_history
     WHERE user_id=?
     ORDER BY id DESC
@@ -222,12 +245,49 @@ else:
     data = c.fetchall()
 
     if data:
-        df = pd.DataFrame(data, columns=["Password", "Score", "Entropy", "Date"])
+        display_data = []
+        for row in data:
+            masked = mask_password(row[0])
+            display_data.append([masked, row[1], row[2], row[3]])
+
+        df = pd.DataFrame(display_data, columns=["Password", "Score", "Entropy", "Date"])
         st.dataframe(df)
 
         fig = plt.figure()
         plt.plot(df["Score"])
         plt.title("Score Trend")
         st.pyplot(fig)
+
+        # SaaS Metrics
+        avg_score = df["Score"].mean()
+        weak_percent = (df["Score"] < 50).mean() * 100
+        strong_percent = (df["Score"] >= 80).mean() * 100
+
+        st.write(f"Average Score: {round(avg_score,2)}")
+        st.write(f"Weak Password %: {round(weak_percent,2)}%")
+        st.write(f"Strong Password %: {round(strong_percent,2)}%")
+
     else:
         st.info("No history yet.")
+
+    # ---------------------------------------------------
+    # ADMIN PANEL
+    # ---------------------------------------------------
+    if st.session_state.role == "Admin":
+        st.divider()
+        st.subheader("Admin Dashboard")
+
+        total_users = get_user_count()
+
+        c.execute("SELECT COUNT(*) FROM password_history")
+        total_passwords = c.fetchone()[0]
+
+        c.execute("SELECT COUNT(*) FROM users WHERE subscription='Pro'")
+        pro_users = c.fetchone()[0]
+
+        revenue = pro_users * 299
+
+        st.write(f"Total Users: {total_users}")
+        st.write(f"Total Passwords Analyzed: {total_passwords}")
+        st.write(f"Pro Users: {pro_users}")
+        st.write(f"Estimated Revenue: ₹{revenue}")
