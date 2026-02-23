@@ -6,6 +6,7 @@ import math
 import re
 import random
 import string
+import matplotlib.pyplot as plt
 
 # -----------------------------
 # DATABASE CONNECTION
@@ -24,7 +25,8 @@ CREATE TABLE IF NOT EXISTS users (
     password TEXT,
     role TEXT DEFAULT 'user',
     subscription TEXT DEFAULT 'free',
-    created_at TEXT
+    created_at TEXT,
+    is_verified INTEGER DEFAULT 0
 )
 """)
 
@@ -51,13 +53,14 @@ def add_column_if_not_exists(table, column, definition):
         c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         conn.commit()
 
+add_column_if_not_exists("users", "is_verified", "INTEGER DEFAULT 0")
 add_column_if_not_exists("password_history", "password_hash", "TEXT")
 add_column_if_not_exists("password_history", "score", "INTEGER")
 add_column_if_not_exists("password_history", "entropy", "REAL")
 add_column_if_not_exists("password_history", "date", "TEXT")
 
 # -----------------------------
-# PASSWORD UTIL FUNCTIONS
+# PASSWORD FUNCTIONS
 # -----------------------------
 def calculate_entropy(password):
     pool = 0
@@ -107,20 +110,10 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 # -----------------------------
-# UI STYLE
+# UI
 # -----------------------------
 st.set_page_config(page_title="Elite Password Checker", page_icon="🔐", layout="wide")
-
-st.markdown("""
-<style>
-.big-title {font-size:40px; font-weight:bold; text-align:center;}
-.weak {color:red;}
-.medium {color:orange;}
-.strong {color:green;}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown("<div class='big-title'>🔐 Elite SaaS Password Checker</div>", unsafe_allow_html=True)
+st.title("🔐 Elite SaaS Password Checker")
 
 menu = ["Login", "Register"]
 choice = st.sidebar.selectbox("Menu", menu)
@@ -144,6 +137,7 @@ if choice == "Register":
             """, (username, email, hashed, str(datetime.datetime.now())))
             conn.commit()
             st.success("Account Created Successfully")
+            st.info("Please verify your email after login.")
         except:
             st.error("Username or Email already exists")
 
@@ -165,7 +159,7 @@ if choice == "Login":
             st.session_state.logged_in = True
             st.session_state.user_id = user[0]
             st.session_state.username = user[1]
-            st.session_state.role = user[4] if len(user) > 4 else "user"
+            st.session_state.is_verified = user[6]
             st.success("Logged In Successfully")
         else:
             st.error("Invalid Credentials")
@@ -176,7 +170,35 @@ if choice == "Login":
 if st.session_state.logged_in:
 
     st.sidebar.success(f"Welcome {st.session_state.username}")
-    page = st.sidebar.selectbox("Dashboard", ["Password Checker", "History", "Password Generator", "Logout"])
+
+    page = st.sidebar.selectbox("Dashboard", 
+        ["Password Checker", "Password Generator", "History", "Analytics Dashboard", "Email Verification", "Logout"])
+
+    # -----------------------------
+    # EMAIL VERIFICATION
+    # -----------------------------
+    if page == "Email Verification":
+        st.subheader("Verify Your Email")
+
+        if st.session_state.is_verified:
+            st.success("Your email is already verified ✅")
+        else:
+            if "otp" not in st.session_state:
+                st.session_state.otp = str(random.randint(100000, 999999))
+
+            st.info(f"Your Verification OTP (simulation): {st.session_state.otp}")
+
+            entered = st.text_input("Enter OTP")
+
+            if st.button("Verify"):
+                if entered == st.session_state.otp:
+                    c.execute("UPDATE users SET is_verified=1 WHERE id=?",
+                              (st.session_state.user_id,))
+                    conn.commit()
+                    st.session_state.is_verified = 1
+                    st.success("Email Verified Successfully 🎉")
+                else:
+                    st.error("Invalid OTP")
 
     # -----------------------------
     # PASSWORD CHECKER
@@ -191,28 +213,17 @@ if st.session_state.logged_in:
             entropy = calculate_entropy(password)
             suggestions = password_suggestions(password)
 
-            # Progress bar
             st.progress(score / 100)
-            st.write(f"### Strength Score: {score}%")
+            st.write(f"Strength Score: {score}%")
             st.write(f"Entropy: {entropy}")
 
-            # Strength label
-            if score < 40:
-                st.markdown("<h4 class='weak'>Weak Password</h4>", unsafe_allow_html=True)
-            elif score < 80:
-                st.markdown("<h4 class='medium'>Moderate Password</h4>", unsafe_allow_html=True)
-            else:
-                st.markdown("<h4 class='strong'>Strong / Elite Password</h4>", unsafe_allow_html=True)
-
-            # Suggestions
             if suggestions:
-                st.warning("Suggestions to improve:")
+                st.warning("Suggestions:")
                 for s in suggestions:
                     st.write("•", s)
             else:
-                st.success("Excellent password! No improvements needed.")
+                st.success("Strong Password!")
 
-            # Save history
             hashed = hash_password(password)
             c.execute("""
             INSERT INTO password_history (user_id, password_hash, score, entropy, date)
@@ -225,13 +236,11 @@ if st.session_state.logged_in:
     # -----------------------------
     if page == "Password Generator":
         st.subheader("Generate Secure Password")
-
         length = st.slider("Select Length", 8, 24, 12)
 
         if st.button("Generate"):
             new_pass = generate_password(length)
             st.code(new_pass)
-            st.success("Password Generated Successfully!")
 
     # -----------------------------
     # HISTORY
@@ -240,23 +249,47 @@ if st.session_state.logged_in:
         st.subheader("Password History")
 
         c.execute("""
-        SELECT password_hash, score, entropy, date
+        SELECT score, entropy, date
         FROM password_history
         WHERE user_id=?
-        ORDER BY id DESC
+        ORDER BY id ASC
         """, (st.session_state.user_id,))
 
         data = c.fetchall()
 
         if data:
             for row in data:
-                st.write(f"Hash: {row[0][:12]}...")
-                st.write(f"Score: {row[1]}%")
-                st.write(f"Entropy: {row[2]}")
-                st.write(f"Date: {row[3]}")
-                st.markdown("---")
+                st.write(f"Score: {row[0]}% | Entropy: {row[1]} | Date: {row[2]}")
         else:
             st.info("No history found.")
+
+    # -----------------------------
+    # ANALYTICS DASHBOARD
+    # -----------------------------
+    if page == "Analytics Dashboard":
+        st.subheader("📈 Password Strength Analytics")
+
+        c.execute("""
+        SELECT score, date FROM password_history
+        WHERE user_id=?
+        ORDER BY id ASC
+        """, (st.session_state.user_id,))
+
+        records = c.fetchall()
+
+        if records:
+            scores = [r[0] for r in records]
+            dates = [r[1] for r in records]
+
+            plt.figure()
+            plt.plot(dates, scores)
+            plt.xticks(rotation=45)
+            plt.xlabel("Date")
+            plt.ylabel("Score")
+            plt.title("Password Strength Trend")
+            st.pyplot(plt)
+        else:
+            st.info("No analytics data available.")
 
     # -----------------------------
     # LOGOUT
