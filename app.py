@@ -113,7 +113,89 @@ if "logged_in" not in st.session_state:
 # UI
 # -----------------------------
 st.set_page_config(page_title="Elite Password Checker", page_icon="🔐", layout="wide")
-st.title("🔐 Elite SaaS Password Checker")
+st.set_page_config(page_title="Elite Password Checker", page_icon="🔐", layout="wide")
+
+# -----------------------------
+# MODERN UI STYLING (NO LOGIC CHANGED)
+# -----------------------------
+st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+
+/* Gradient Animated Background */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(-45deg, #1e3c72, #2a5298, #0f2027, #203a43);
+    background-size: 400% 400%;
+    animation: gradientMove 15s ease infinite;
+    font-family: 'Inter', sans-serif;
+}
+
+@keyframes gradientMove {
+    0% {background-position: 0% 50%;}
+    50% {background-position: 100% 50%;}
+    100% {background-position: 0% 50%;}
+}
+
+/* Large Bold Gradient Heading */
+.main-heading {
+    font-size: 52px;
+    font-weight: 800;
+    font-family: 'Poppins', sans-serif;
+    text-align: center;
+    background: linear-gradient(90deg, #ffffff, #00f2fe);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 30px;
+    animation: fadeSlide 1.2s ease-out;
+}
+
+/* Fade + Slide Animation */
+@keyframes fadeSlide {
+    from {
+        opacity: 0;
+        transform: translateY(40px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Glassmorphism Effect */
+.block-container {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    animation: fadeSlide 1.2s ease-out;
+}
+
+/* Sidebar Glass */
+[data-testid="stSidebar"] {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(14px);
+}
+
+/* Buttons Modern Style */
+.stButton>button {
+    border-radius: 12px;
+    font-weight: 600;
+    padding: 10px 20px;
+    transition: 0.3s ease;
+}
+
+.stButton>button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-heading">🔐 Elite SaaS Password Checker</div>', unsafe_allow_html=True)
 
 menu = ["Login", "Register"]
 choice = st.sidebar.selectbox("Menu", menu)
