@@ -110,95 +110,183 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
 # -----------------------------
-# UI
-# -----------------------------
-st.set_page_config(page_title="Elite Password Checker", page_icon="🔐", layout="wide")
-st.set_page_config(page_title="Elite Password Checker", page_icon="🔐", layout="wide")
-
-# -----------------------------
-# MODERN UI STYLING (NO LOGIC CHANGED)
+# ADVANCED PREMIUM UI (REPLACE ONLY YOUR CSS SECTION WITH THIS)
 # -----------------------------
 st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
 
 <style>
 
-/* Gradient Animated Background */
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(-45deg, #1e3c72, #2a5298, #0f2027, #203a43);
-    background-size: 400% 400%;
-    animation: gradientMove 15s ease infinite;
+/* =========================
+   3D PARTICLE ANIMATED BACKGROUND
+========================= */
+.stApp {
     font-family: 'Inter', sans-serif;
+    background: radial-gradient(circle at 20% 20%, #1a1a2e, #0f3460, #000000);
+    overflow-x: hidden;
 }
 
-@keyframes gradientMove {
-    0% {background-position: 0% 50%;}
-    50% {background-position: 100% 50%;}
-    100% {background-position: 0% 50%;}
+.stApp::before {
+    content: "";
+    position: fixed;
+    width: 200%;
+    height: 200%;
+    top: -50%;
+    left: -50%;
+    background-image: radial-gradient(white 1px, transparent 1px);
+    background-size: 50px 50px;
+    opacity: 0.05;
+    animation: moveParticles 60s linear infinite;
+    z-index: 0;
 }
 
-/* Large Bold Gradient Heading */
-.main-heading {
-    font-size: 52px;
-    font-weight: 800;
+@keyframes moveParticles {
+    from { transform: translate(0,0); }
+    to { transform: translate(200px,200px); }
+}
+
+/* =========================
+   LARGE BOLD TITLE
+========================= */
+.main-title {
+    font-size: 65px;
+    font-weight: 900;
     font-family: 'Poppins', sans-serif;
     text-align: center;
-    background: linear-gradient(90deg, #ffffff, #00f2fe);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 30px;
-    animation: fadeSlide 1.2s ease-out;
+    color: white;
+    margin-top: 20px;
+    animation: fadeInDown 1s ease-in-out;
+    z-index: 2;
+    position: relative;
 }
 
-/* Fade + Slide Animation */
-@keyframes fadeSlide {
-    from {
-        opacity: 0;
-        transform: translateY(40px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Glassmorphism Effect */
-.block-container {
-    background: rgba(255, 255, 255, 0.08);
+/* =========================
+   GLASSMORPHISM CARDS
+========================= */
+.glass-card {
+    background: rgba(255, 255, 255, 0.12);
     backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border-radius: 20px;
+    border-radius: 25px;
     padding: 30px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    animation: fadeSlide 1.2s ease-out;
+    margin: 20px 0;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    animation: slideUp 0.8s ease;
+    color: white;
+    position: relative;
+    z-index: 2;
 }
 
-/* Sidebar Glass */
-[data-testid="stSidebar"] {
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(14px);
+/* =========================
+   FLOAT EFFECT
+========================= */
+@keyframes float {
+    0% { transform: translatey(0px); }
+    50% { transform: translatey(-12px); }
+    100% { transform: translatey(0px); }
 }
 
-/* Buttons Modern Style */
-.stButton>button {
-    border-radius: 12px;
+.glass-card:hover {
+    animation: float 3s ease-in-out infinite;
+}
+
+/* =========================
+   NEON BUTTONS
+========================= */
+div.stButton > button {
+    background: transparent;
+    color: #00f5ff;
+    border: 2px solid #00f5ff;
+    border-radius: 30px;
+    padding: 10px 25px;
     font-weight: 600;
-    padding: 10px 20px;
     transition: 0.3s ease;
 }
 
-.stButton>button:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+div.stButton > button:hover {
+    background: #00f5ff;
+    color: black;
+    box-shadow: 0 0 20px #00f5ff,
+                0 0 40px #00f5ff,
+                0 0 60px #00f5ff;
+}
+
+/* =========================
+   PREMIUM LOCK OVERLAY
+========================= */
+.premium-lock {
+    position: relative;
+}
+
+.premium-lock::after {
+    content: "🔒 Premium Feature";
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: linear-gradient(45deg, gold, orange);
+    color: black;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* =========================
+   ADMIN DASHBOARD GLASS
+========================= */
+.admin-glass {
+    background: rgba(0, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(0,255,255,0.3);
+    border-radius: 25px;
+    padding: 40px;
+    margin-top: 30px;
+    box-shadow: 0 0 40px rgba(0,255,255,0.2);
+    color: white;
+    animation: fadeInDown 1s ease;
+}
+
+/* =========================
+   ANIMATIONS
+========================= */
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-40px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(50px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-heading">🔐 Elite SaaS Password Checker</div>', unsafe_allow_html=True)
-
+st.markdown('<div class="main-title">🔐 Elite SaaS Password Checker</div>', unsafe_allow_html=True)
+# -----------------------------
+# MENU (MUST BE BEFORE USING choice)
+# -----------------------------
 menu = ["Login", "Register"]
 choice = st.sidebar.selectbox("Menu", menu)
+
+# -----------------------------
+# PREMIUM UI BOX (Optional Visual Only)
+# -----------------------------
+st.markdown("""
+<div class="glass-card premium-lock">
+<h3>🚀 Premium Analytics Dashboard</h3>
+<p>Upgrade to unlock AI insights, breach monitoring & enterprise reporting.</p>
+</div>
+""", unsafe_allow_html=True)
+
+# -----------------------------
+# ADMIN GLASS DASHBOARD (UI ONLY)
+# -----------------------------
+st.markdown("""
+<div class="admin-glass">
+<h3>👑 Admin Control Center</h3>
+<p>Advanced monitoring • User management • Security insights</p>
+</div>
+""", unsafe_allow_html=True)
 
 # -----------------------------
 # REGISTER
